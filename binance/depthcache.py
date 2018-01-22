@@ -1,8 +1,8 @@
 # coding=utf-8
 
-from operator import itemgetter
 import time
 
+from operator import itemgetter
 from .websockets import BinanceSocketManager
 
 
@@ -120,7 +120,8 @@ class DepthCacheManager(object):
 
     _default_refresh = 60 * 30  # 30 minutes
 
-    def __init__(self, client, symbol, callback=None, refresh_interval=_default_refresh, depth_limit=500):
+    def __init__(self, client, symbol, callback=None, refresh_interval=_default_refresh, depth_limit=500,
+                 writing_callback=None):
         """Initialise the DepthCacheManager
 
         :param client: Binance API client
@@ -133,6 +134,9 @@ class DepthCacheManager(object):
         :type refresh_interval: int
         :param depth_limit: Optional depth of the order book
         :type depth_limit: int
+        :param writing_callback: Optional callback function for writing order books and diffs on each event, example:
+            writing_callback(full_order_book) or writing_callback(diffs)
+        :type writing_callback: function
 
         """
         self._client = client
@@ -144,6 +148,7 @@ class DepthCacheManager(object):
         self._depth_cache = DepthCache(self._symbol)
         self._refresh_interval = refresh_interval
         self._depth_limit = depth_limit
+        self._writing_callback = writing_callback
 
         self._start_socket()
         self._init_cache()
@@ -164,6 +169,13 @@ class DepthCacheManager(object):
         for ask in res['asks']:
             self._depth_cache.add_ask(ask)
 
+        # pass data to the writing callback
+        if self._writing_callback:
+            # compute local time in binance-likely format
+            res['LT'] = DepthCacheManager()._get_local_time()
+            # process full order book on order_book update
+            self._writing_callback(res)
+
         # set first update id
         self._last_update_id = res['lastUpdateId']
 
@@ -183,6 +195,8 @@ class DepthCacheManager(object):
 
         :return:
         """
+        # self._refresh_time = int(time.time()) * 100
+
         self._bm = BinanceSocketManager(self._client)
 
         self._bm.start_depth_socket(self._symbol, self._depth_event)
@@ -191,7 +205,7 @@ class DepthCacheManager(object):
 
         # wait for some socket responses
         while not len(self._depth_message_buffer):
-            time.sleep(1)
+            time.sleep(1.0)
 
     def _depth_event(self, msg):
         """Handle a depth event
@@ -204,7 +218,6 @@ class DepthCacheManager(object):
         if 'e' in msg and msg['e'] == 'error':
             # close the socket
             self.close()
-
             # notify the user by returning a None value
             if self._callback:
                 self._callback(None)
@@ -214,6 +227,7 @@ class DepthCacheManager(object):
             self._depth_message_buffer.append(msg)
         else:
             self._process_depth_message(msg)
+
 
     def _process_depth_message(self, msg, buffer=False):
         """Process a depth event message.
@@ -237,6 +251,14 @@ class DepthCacheManager(object):
         for ask in msg['a']:
             self._depth_cache.add_ask(ask)
 
+        # ON UPDATE
+        if self._writing_callback:
+            # compute local time in binance-likely format
+            local_time = round(time.time() * 10 ** 3)
+            msg['LT'] = str(local_time)
+            # process diff with writing callback
+            self._writing_callback(msg)
+
         # call the callback with the updated depth cache
         if self._callback:
             self._callback(self._depth_cache)
@@ -246,6 +268,17 @@ class DepthCacheManager(object):
         # after processing event see if we need to refresh the depth cache
         if self._refresh_interval and int(time.time()) > self._refresh_time:
             self._init_cache()
+
+    @staticmethod
+    def _get_local_time():
+        """
+        Return a local server time in binance-like format
+
+        :return: string
+        """
+        local_time = round(time.time() * 10 ** 3)
+        local_time_str = str(local_time)
+        return local_time_str
 
     def get_depth_cache(self):
         """Get the current depth cache
