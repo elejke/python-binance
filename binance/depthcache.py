@@ -172,7 +172,7 @@ class DepthCacheManager(object):
         # pass data to the writing callback
         if self._writing_callback:
             # compute local time in binance-likely format
-            res['LT'] = DepthCacheManager()._get_local_time()
+            res['LT'] = DepthCacheManager._get_local_time()
             # process full order book on order_book update
             self._writing_callback(res)
 
