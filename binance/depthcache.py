@@ -188,7 +188,7 @@ class DepthCacheManager(object):
             self._process_depth_message(msg, buffer=True)
 
         # clear the depth buffer
-        del self._depth_message_buffer
+        # del self._depth_message_buffer
 
     def _start_socket(self):
         """Start the depth cache socket
@@ -227,7 +227,6 @@ class DepthCacheManager(object):
             self._depth_message_buffer.append(msg)
         else:
             self._process_depth_message(msg)
-
 
     def _process_depth_message(self, msg, buffer=False):
         """Process a depth event message.
