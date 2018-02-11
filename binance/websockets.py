@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # coding=utf-8
 
 import json
@@ -82,7 +83,7 @@ class BinanceSocketManager(threading.Thread):
         self._user_callback = None
         self._client = client
 
-    def _start_socket(self, path, callback, prefix='ws/'):
+    def _start_socket(self, path, callback, prefix='ws/', maxRetries=5):
         if path in self._conns:
             return False
 
@@ -91,12 +92,13 @@ class BinanceSocketManager(threading.Thread):
         factory.protocol = BinanceClientProtocol
         factory.callback = callback
         factory.reconnect = True
+        factory.maxRetries = maxRetries
         context_factory = ssl.ClientContextFactory()
 
         self._conns[path] = connectWS(factory, context_factory)
         return path
 
-    def start_depth_socket(self, symbol, callback, depth=None):
+    def start_depth_socket(self, symbol, callback, depth=None, maxRetries=5):
         """Start a websocket for symbol market depth returning either a diff or a partial book
 
         https://github.com/binance-exchange/binance-official-api-docs/blob/master/web-socket-streams.md#partial-book-depth-streams
@@ -107,6 +109,8 @@ class BinanceSocketManager(threading.Thread):
         :type callback: function
         :param depth: optional Number of depth entries to return, default None. If passed returns a partial book instead of a diff
         :type depth: str
+        :param maxRetries: number of reconnection retries; None = inf
+        :type maxRetries: int
 
         :returns: connection key string if successful, False otherwise
 
@@ -163,9 +167,9 @@ class BinanceSocketManager(threading.Thread):
         socket_name = symbol.lower() + '@depth'
         if depth and depth != '1':
             socket_name = '{}{}'.format(socket_name, depth)
-        return self._start_socket(socket_name, callback)
+        return self._start_socket(socket_name, callback, maxRetries=maxRetries)
 
-    def start_kline_socket(self, symbol, callback, interval=Client.KLINE_INTERVAL_1MINUTE):
+    def start_kline_socket(self, symbol, callback, interval=Client.KLINE_INTERVAL_1MINUTE, maxRetries=5):
         """Start a websocket for symbol kline data
 
         https://github.com/binance-exchange/binance-official-api-docs/blob/master/web-socket-streams.md#klinecandlestick-streams
@@ -176,6 +180,8 @@ class BinanceSocketManager(threading.Thread):
         :type callback: function
         :param interval: Kline interval, default KLINE_INTERVAL_1MINUTE
         :type interval: str
+        :param maxRetries: number of reconnection retries; None = inf
+        :type maxRetries: int
 
         :returns: connection key string if successful, False otherwise
 
@@ -209,9 +215,9 @@ class BinanceSocketManager(threading.Thread):
             }
         """
         socket_name = '{}@kline_{}'.format(symbol.lower(), interval)
-        return self._start_socket(socket_name, callback)
+        return self._start_socket(socket_name, callback, maxRetries=maxRetries)
 
-    def start_miniticker_socket(self, callback, update_time=1000):
+    def start_miniticker_socket(self, callback, update_time=1000, maxRetries=5):
         """Start a miniticker websocket for all trades
 
         This is not in the official Binance api docs, but this is what
@@ -221,6 +227,8 @@ class BinanceSocketManager(threading.Thread):
         :type callback: function
         :param update_time: time between callbacks in milliseconds, must be 1000 or greater
         :type update_time: int
+        :param maxRetries: number of reconnection retries; None = inf
+        :type maxRetries: int
 
         :returns: connection key string if successful, False otherwise
 
@@ -243,9 +251,9 @@ class BinanceSocketManager(threading.Thread):
             ]
         """
 
-        return self._start_socket('!miniTicker@arr@{}ms'.format(update_time), callback)
+        return self._start_socket('!miniTicker@arr@{}ms'.format(update_time), callback, maxRetries=maxRetries)
 
-    def start_trade_socket(self, symbol, callback):
+    def start_trade_socket(self, symbol, callback, maxRetries=5):
         """Start a websocket for symbol trade data
 
         https://github.com/binance-exchange/binance-official-api-docs/blob/master/web-socket-streams.md#trade-streams
@@ -254,6 +262,8 @@ class BinanceSocketManager(threading.Thread):
         :type symbol: str
         :param callback: callback function to handle messages
         :type callback: function
+        :param maxRetries: number of reconnection retries; None = inf
+        :type maxRetries: int
 
         :returns: connection key string if successful, False otherwise
 
@@ -276,9 +286,9 @@ class BinanceSocketManager(threading.Thread):
             }
 
         """
-        return self._start_socket(symbol.lower() + '@trade', callback)
+        return self._start_socket(symbol.lower() + '@trade', callback, maxRetries=maxRetries)
 
-    def start_aggtrade_socket(self, symbol, callback):
+    def start_aggtrade_socket(self, symbol, callback, maxRetries=5):
         """Start a websocket for symbol trade data
 
         https://github.com/binance-exchange/binance-official-api-docs/blob/master/web-socket-streams.md#aggregate-trade-streams
@@ -287,6 +297,8 @@ class BinanceSocketManager(threading.Thread):
         :type symbol: str
         :param callback: callback function to handle messages
         :type callback: function
+        :param maxRetries: number of reconnection retries; None = inf
+        :type maxRetries: int
 
         :returns: connection key string if successful, False otherwise
 
@@ -309,9 +321,9 @@ class BinanceSocketManager(threading.Thread):
             }
 
         """
-        return self._start_socket(symbol.lower() + '@aggTrade', callback)
+        return self._start_socket(symbol.lower() + '@aggTrade', callback, maxRetries=maxRetries)
 
-    def start_symbol_ticker_socket(self, symbol, callback):
+    def start_symbol_ticker_socket(self, symbol, callback, maxRetries=5):
         """Start a websocket for a symbol's ticker data
 
         https://github.com/binance-exchange/binance-official-api-docs/blob/master/web-socket-streams.md#individual-symbol-ticker-streams
@@ -320,6 +332,8 @@ class BinanceSocketManager(threading.Thread):
         :type symbol: str
         :param callback: callback function to handle messages
         :type callback: function
+        :param maxRetries: number of reconnection retries; None = inf
+        :type maxRetries: int
 
         :returns: connection key string if successful, False otherwise
 
@@ -354,9 +368,9 @@ class BinanceSocketManager(threading.Thread):
             }
 
         """
-        return self._start_socket(symbol.lower() + '@ticker', callback)
+        return self._start_socket(symbol.lower() + '@ticker', callback, maxRetries=maxRetries)
 
-    def start_ticker_socket(self, callback):
+    def start_ticker_socket(self, callback, maxRetries=5):
         """Start a websocket for all ticker data
 
         By default all markets are included in an array.
@@ -365,6 +379,8 @@ class BinanceSocketManager(threading.Thread):
 
         :param callback: callback function to handle messages
         :type callback: function
+        :param maxRetries: number of reconnection retries; None = inf
+        :type maxRetries: int
 
         :returns: connection key string if successful, False otherwise
 
@@ -398,9 +414,9 @@ class BinanceSocketManager(threading.Thread):
                 }
             ]
         """
-        return self._start_socket('!ticker@arr', callback)
+        return self._start_socket('!ticker@arr', callback, maxRetries=maxRetries)
 
-    def start_multiplex_socket(self, streams, callback):
+    def start_multiplex_socket(self, streams, callback, maxRetries=5):
         """Start a multiplexed socket using a list of socket names.
         User stream sockets can not be included.
 
@@ -414,6 +430,8 @@ class BinanceSocketManager(threading.Thread):
         :type streams: list
         :param callback: callback function to handle messages
         :type callback: function
+        :param maxRetries: number of reconnection retries; None = inf
+        :type maxRetries: int
 
         :returns: connection key string if successful, False otherwise
 
@@ -421,15 +439,17 @@ class BinanceSocketManager(threading.Thread):
 
         """
         stream_path = 'streams={}'.format('/'.join(streams))
-        return self._start_socket(stream_path, callback, 'stream?')
+        return self._start_socket(stream_path, callback, 'stream?', maxRetries=maxRetries)
 
-    def start_user_socket(self, callback):
+    def start_user_socket(self, callback, maxRetries=5):
         """Start a websocket for user data
 
         https://www.binance.com/restapipub.html#user-wss-endpoint
 
         :param callback: callback function to handle messages
         :type callback: function
+        :param maxRetries: number of reconnection retries; None = inf
+        :type maxRetries: int
 
         :returns: connection key string if successful, False otherwise
 
@@ -443,7 +463,7 @@ class BinanceSocketManager(threading.Thread):
                     break
         self._user_listen_key = self._client.stream_get_listen_key()
         self._user_callback = callback
-        conn_key = self._start_socket(self._user_listen_key, callback)
+        conn_key = self._start_socket(self._user_listen_key, callback, maxRetries=maxRetries)
         if conn_key:
             # start timer to keep socket alive
             self._start_user_timer()
