@@ -14,9 +14,32 @@ from twisted.internet.error import ReactorAlreadyRunning
 from binance.client import Client
 
 
+class DummyLogger(object):
+
+    @staticmethod
+    def log(self):
+        pass
+
+
 class BinanceClientProtocol(WebSocketClientProtocol):
 
     def onConnect(self, response):
+        # send logs
+        if self.factory._counters["connected"] == 0:
+            try:
+                self.factory.logger.log("Connection has been established!")
+            except:
+                pass
+            self.factory._counters["connected"] += 1
+        elif self.factory.retries > 0:
+            try:
+                self.factory.logger.log("Connection has been restored!")
+            except:
+                pass
+        else:
+            pass
+        self.factory._counters["lost"] = 0
+        self.factory._counters["failed"] = 0
         # reset the delay after reconnecting
         self.factory.resetDelay()
 
@@ -35,28 +58,42 @@ class BinanceReconnectingClientFactory(ReconnectingClientFactory):
     # set initial delay to a short time
     initialDelay = 0.1
 
-    maxDelay = 10
+    maxDelay = 5
 
-    maxRetries = 5
+    maxRetries = None
 
 
 class BinanceClientFactory(WebSocketClientFactory, BinanceReconnectingClientFactory):
 
     protocol = BinanceClientProtocol
-    _reconnect_error_payload = {
-        'e': 'error',
-        'm': 'Max reconnect retries reached'
-    }
+
+    logger = DummyLogger()
+
+    _counters = {"failed": 0, "lost": 0, "connected": 0}
 
     def clientConnectionFailed(self, connector, reason):
+        if self._counters["failed"] == 0:
+            # send logs
+            try:
+                self.logger.log("Failed:\n" + str(reason.value))
+            except:
+                pass
+            self._counters["failed"] += 1
         self.retry(connector)
-        if self.retries > self.maxRetries:
-            self.callback(self._reconnect_error_payload)
+        if (self.maxRetries is not None) and (self.retries > self.maxRetries):
+            self.logger.log("Max reconnect retries reached!")
 
     def clientConnectionLost(self, connector, reason):
+        if self._counters["lost"] == 0:
+            # send logs
+            try:
+                self.logger.log("Lost:\n" + str(reason.value))
+            except:
+                pass
+            self._counters["lost"] += 1
         self.retry(connector)
-        if self.retries > self.maxRetries:
-            self.callback(self._reconnect_error_payload)
+        if (self.maxRetries is not None) and (self.retries > self.maxRetries):
+            self.logger.log("Max reconnect retries reached!")
 
 
 class BinanceSocketManager(threading.Thread):
@@ -69,7 +106,7 @@ class BinanceSocketManager(threading.Thread):
 
     _user_timeout = 30 * 60  # 30 minutes
 
-    def __init__(self, client):
+    def __init__(self, client, logger):
         """Initialise the BinanceSocketManager
 
         :param client: Binance API client
@@ -83,7 +120,11 @@ class BinanceSocketManager(threading.Thread):
         self._user_callback = None
         self._client = client
 
-    def _start_socket(self, path, callback, prefix='ws/', max_retries=5):
+        if logger is None:
+            logger = DummyLogger()
+        self._logger = logger
+
+    def _start_socket(self, path, callback, prefix='ws/', max_retries=None):
         if path in self._conns:
             return False
 
@@ -93,6 +134,7 @@ class BinanceSocketManager(threading.Thread):
         factory.callback = callback
         factory.reconnect = True
         factory.maxRetries = max_retries
+        factory.logger = self._logger
         context_factory = ssl.ClientContextFactory()
 
         self._conns[path] = connectWS(factory, context_factory)
